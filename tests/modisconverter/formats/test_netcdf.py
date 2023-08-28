@@ -363,6 +363,264 @@ class TestNetCdf4(TestCase):
             )
         )
 
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_group')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_dimension_for_group(self, mock_open, mock_get_group):
+        expected_name, expected_len = 'name', 10
+        expected_grp_name = 'grp'
+        expected_grp = Mock()
+        expected_grp.dimensions = []
+        expected_grp.createDimension = Mock()
+        mock_get_group.return_value = expected_grp
+        mock_cm = Mock()
+        expected_ds = Mock()
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        mock_cm.__exit__ = Mock()
+        mock_open.return_value = mock_cm
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        actual_inst.add_dimension(expected_name, expected_len, group=expected_grp_name)
+
+        mock_open.assert_called_with()
+        mock_get_group.assert_called_with(expected_grp_name)
+        expected_grp.createDimension.assert_called_with(expected_name, expected_len)
+
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_group')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_dimension_creation(self, mock_open, mock_get_group):
+        expected_name, expected_len = 'name', 10
+        mock_cm = Mock()
+        expected_ds = Mock()
+        expected_ds.dimensions = []
+        expected_ds.createDimension = Mock()
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        mock_cm.__exit__ = Mock()
+        mock_open.return_value = mock_cm
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        actual_inst.add_dimension(expected_name, expected_len)
+
+        mock_open.assert_called_with()
+        mock_get_group.assert_not_called()
+        expected_ds.createDimension.assert_called_with(expected_name, expected_len)
+
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_group')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_dimension_creation_failure(self, mock_open, mock_get_group):
+        expected_name, expected_len = 'name', 10
+        mock_cm = Mock()
+        expected_ds = Mock()
+        expected_ds.dimensions = []
+        expected_ds.createDimension = Mock(side_effect=Exception('failure'))
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        def exit_f(inst, exc_type, exc_value, traceback):
+            raise exc_type(exc_value)
+        mock_cm.__exit__ = exit_f
+        mock_open.return_value = mock_cm
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+
+        with self.assertRaises(netcdf.NetCdf4Error):
+            actual_inst.add_dimension(expected_name, expected_len)
+        mock_open.assert_called_with()
+        mock_get_group.assert_not_called()
+        expected_ds.createDimension.assert_called_with(expected_name, expected_len)
+
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_group')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_dimension_creation_dim_exists(self, mock_open, mock_get_group):
+        expected_name, expected_len = 'name', 10
+        mock_cm = Mock()
+        expected_ds = Mock()
+        expected_ds.dimensions = [expected_name]
+        expected_ds.createDimension = Mock(side_effect=Exception('failure'))
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        def exit_f(inst, exc_type, exc_value, traceback):
+            raise exc_type(exc_value)
+        mock_cm.__exit__ = exit_f
+        mock_open.return_value = mock_cm
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+
+        with self.assertRaises(netcdf.NetCdf4Error):
+            actual_inst.add_dimension(expected_name, expected_len)
+        mock_open.assert_called_with()
+        mock_get_group.assert_not_called()
+        expected_ds.createDimension.assert_not_called()
+
+    def test_get_cf_compliant_name(self):
+        expected_name = 'a&b'
+        expected_comp_name = 'a_b'
+
+        actual_inst = self.test_init(return_instance=True)
+        self.assertEqual(
+            actual_inst._get_cf_compliant_name(expected_name),
+            expected_comp_name
+        )
+
+    def test_ensure_cf_compliant_dtype(self):
+        expected_in_and_out = [
+            (np.uint8, np.dtype(np.int16)),
+            (np.uint16, np.dtype(np.int32)),
+            (np.uint32, np.dtype(np.int64))
+        ]
+        actual_inst = self.test_init(return_instance=True)
+
+        for i, o in expected_in_and_out:
+            self.assertEqual(
+                actual_inst._ensure_cf_compliant_dtype(i), o
+            )
+
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_variable')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_variable_auto_scale(self, mock_open, mock_get_variable):
+        expected_name, expected_dtype = 'name', 'int16'
+        expected_scale = 'scl'
+        mock_cm = Mock()
+        expected_ds = Mock()
+        expected_var = Mock()
+        expected_var.set_auto_maskandscale = Mock()
+        expected_ds.createVariable = Mock(return_value=expected_var)
+        expected_ds.set_auto_maskandscale = Mock()
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        mock_cm.__exit__ = Mock()
+        mock_open.return_value = mock_cm
+        mock_get_variable.side_effect = netcdf.NetCdf4Error('does not exist')
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        actual_inst.add_variable(
+            expected_name, expected_dtype, set_auto_mask_scale=expected_scale
+        )
+
+        mock_open.assert_called_with()
+        mock_get_variable.assert_called_with(expected_name)
+        expected_ds.createVariable.assert_called_with(
+            expected_name, expected_dtype, **netcdf.DEFAULT_NETCDF4_VARIABLE_OPTIONS
+        )
+        expected_var.set_auto_maskandscale.assert_called_with(expected_scale)
+
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_variable')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_variable_creation_failure(self, mock_open, mock_get_variable):
+        expected_name, expected_dtype = 'name', 'int16'
+        expected_scale = 'scl'
+        mock_cm = Mock()
+        expected_ds = Mock()
+        expected_var = Mock()
+        expected_var.set_auto_maskandscale = Mock()
+        expected_ds.createVariable = Mock(side_effect=Exception('failure'))
+        expected_ds.set_auto_maskandscale = Mock()
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        def exit_f(inst, exc_type, exc_value, traceback):
+            raise exc_type(exc_value)
+        mock_cm.__exit__ = exit_f
+        mock_open.return_value = mock_cm
+        mock_get_variable.side_effect = netcdf.NetCdf4Error('does not exist')
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        with self.assertRaises(netcdf.NetCdf4Error):
+            actual_inst.add_variable(
+                expected_name, expected_dtype, set_auto_mask_scale=expected_scale
+            )
+        mock_open.assert_called_with()
+        mock_get_variable.assert_called_with(expected_name)
+        expected_ds.createVariable.assert_called_with(
+            expected_name, expected_dtype, **netcdf.DEFAULT_NETCDF4_VARIABLE_OPTIONS
+        )
+        expected_var.set_auto_maskandscale.assert_not_called()
+
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_variable')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_variable_already_exists(self, mock_open, mock_get_variable):
+        expected_name, expected_dtype = 'name', 'int16'
+        expected_scale = 'scl'
+        mock_cm = Mock()
+        expected_ds = Mock()
+        expected_var = Mock()
+        expected_ds.createVariable = Mock()
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        def exit_f(inst, exc_type, exc_value, traceback):
+            raise exc_type(exc_value)
+        mock_cm.__exit__ = exit_f
+        mock_open.return_value = mock_cm
+        mock_get_variable.return_value = expected_var
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        with self.assertRaises(netcdf.NetCdf4Error):
+            actual_inst.add_variable(
+                expected_name, expected_dtype, set_auto_mask_scale=expected_scale
+            )
+        mock_open.assert_called_with()
+        mock_get_variable.assert_called_with(expected_name)
+        expected_ds.createVariable.assert_not_called()
+
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_group(self, mock_open):
+        expected_name = 'name'
+        mock_cm = Mock()
+        expected_ds = Mock()
+        expected_ds.groups = []
+        expected_ds.createGroup = Mock()
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        mock_cm.__exit__ = Mock()
+        mock_open.return_value = mock_cm
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        actual_inst.add_group(expected_name)
+        
+        mock_open.assert_called_with()
+        expected_ds.createGroup.assert_called_with(expected_name)
+
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_group_already_exists(self, mock_open):
+        expected_name = 'name'
+        mock_cm = Mock()
+        expected_ds = Mock()
+        expected_ds.groups = [expected_name]
+        expected_ds.createGroup = Mock()
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        def exit_f(inst, exc_type, exc_value, traceback):
+            raise exc_type(exc_value)
+        mock_cm.__exit__ = exit_f
+        mock_open.return_value = mock_cm
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        with self.assertRaises(netcdf.NetCdf4Error):
+            actual_inst.add_group(expected_name)
+        
+        mock_open.assert_called_with()
+        expected_ds.createGroup.assert_not_called()
+
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_group_creation_failure(self, mock_open):
+        expected_name = 'name'
+        mock_cm = Mock()
+        expected_ds = Mock()
+        expected_ds.groups = []
+        expected_ds.createGroup = Mock(side_effect=Exception('failure'))
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        def exit_f(inst, exc_type, exc_value, traceback):
+            raise exc_type(exc_value)
+        mock_cm.__exit__ = exit_f
+        mock_open.return_value = mock_cm
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        with self.assertRaises(netcdf.NetCdf4Error):
+            actual_inst.add_group(expected_name)
+        
+        mock_open.assert_called_with()
+        expected_ds.createGroup.assert_called_with(expected_name)
+
 
 if __name__ == '__main__':
     main()

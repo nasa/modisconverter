@@ -251,14 +251,17 @@ class NetCdf4(FileFormat):
         with self._open() as ds:
             try:
                 var = self.get_variable(name)
-                raise NetCdf4Error(f'variable {name} already exists in the dataset')
             except:
-                try:
-                    var = ds.createVariable(name, dtype, **options)
-                    if set_auto_mask_scale is not None:
-                        var.set_auto_maskandscale(set_auto_mask_scale)
-                except Exception as e:
-                    raise NetCdf4Error(f'{e.__class__.__name__}: {str(e)}')
+                var = None
+            if var is not None:
+                raise NetCdf4Error(f'variable {name} already exists in the dataset')
+
+            try:
+                var = ds.createVariable(name, dtype, **options)
+                if set_auto_mask_scale is not None:
+                    var.set_auto_maskandscale(set_auto_mask_scale)
+            except Exception as e:
+                raise NetCdf4Error(f'{e.__class__.__name__}: {str(e)}')
 
     @assert_writable
     def add_group(self, name):

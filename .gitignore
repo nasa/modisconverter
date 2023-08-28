@@ -1,0 +1,22 @@
+# Python internals, like byte-code
+*.pyc
+__pycache__/
+
+# building
+build_dist.sh
+build/
+dist/
+*.egg-info/
+
+# local development
+development.py
+development_notes.txt
+install_dev.sh
+install.sh
+run_unit_tests_dev.sh
+.coverage
+.DS_Store
+.devcontainer/
+.vscode/
+cover/
+/data/

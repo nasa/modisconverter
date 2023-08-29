@@ -48,7 +48,7 @@ setup(
     include_package_data=True,
     test_suite='tests',
     classifiers=[
-        'Development Status :: 1 - Planning',
+        'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Science/Research',
         'Intended Audience :: Developers',
         'Operating System :: POSIX :: Linux',

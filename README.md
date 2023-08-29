@@ -9,26 +9,21 @@
 
 ## Installation
 
-In your local environment, clone the project and enter the directory.
+This package is available on [PyPI](https://pypi.org/project/modisconverter/) and can be installed with [pip](https://pip.pypa.io/en/stable/user_guide/).
+
+Package install depends on having a Python `GDAL` package that matches the version of the underlying GDAL installation. It also requires the `rasterio` package to be built from source.
 
 ```bash
-$ git clone <repo-url> modisconverter
-$ cd modisconverter
-```
-
-Use [pip](https://pip.pypa.io/en/stable/user_guide/) to install the package.  Installation depends on having a Python `GDAL` package that matches the version of the underlying GDAL installation. It also requires the `rasterio` package to be built from source.
-
-```bash
-$ pip install GDAL==<installed-version-number> --no-binary rasterio .
+$ pip install GDAL==<installed-version-number> --no-binary rasterio modisconverter
 ```
 
 e.g.
 
 ```bash
-$ pip install GDAL==3.6.3 --no-binary rasterio .
+$ pip install GDAL==3.6.3 --no-binary rasterio modisconverter
 ```
 
-You can find your installed GDAL version by using the `gdal-config` binary.
+You can find your installed GDAL version by using the `gdal-config` binary:
 
 ```bash
 $ gdal-config --version
@@ -54,5 +49,5 @@ convert_file(src, dst)
 
 Listed below are various documents pertaining to this project.
 
-- [Changelog](docs/CHANGELOG.md) - Information on releases.
+- [Changelog](CHANGELOG.md) - Information on releases.
 - [Usage](docs/USAGE.md) - Detailed usage of the library.

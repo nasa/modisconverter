@@ -40,12 +40,12 @@ setup(
     long_description_content_type=desc_media,
     url=project_url,
     packages=find_packages(include=[pkg_name, f'{pkg_name}.*']),
+    include_package_data=True,
     python_requires='>=3.9, <4',
     install_requires=file_to_list('requirements.txt'),
     extras_require={
         'dev': file_to_list('requirements-dev.txt'),
     },
-    include_package_data=True,
     test_suite='tests',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',

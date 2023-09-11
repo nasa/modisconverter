@@ -13,7 +13,7 @@ def _get_client():
 
 
 def is_s3_url(url):
-    return True if urlparse(url).scheme == 's3' else False
+    return urlparse(url).scheme == 's3'
 
 
 def parse_s3_url(url):

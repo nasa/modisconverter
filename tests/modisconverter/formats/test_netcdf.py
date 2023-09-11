@@ -2,7 +2,9 @@ import numpy as np
 from typing import Callable
 from unittest import TestCase, main
 from unittest.mock import patch, Mock
+from rasterio.windows import Window
 from modisconverter.formats import netcdf
+from modisconverter.formats import FileFormat, FORMAT_HDF4
 
 
 class TestNetCdf4(TestCase):
@@ -621,6 +623,310 @@ class TestNetCdf4(TestCase):
         mock_open.assert_called_with()
         expected_ds.createGroup.assert_called_with(expected_name)
 
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_variable')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_data_to_variable(self, mock_open, mock_get_variable):
+        expected_name = 'var'
+        expected_data = np.array([1])
+        expected_higher_idxs = [0]
+        mock_cm = Mock()
+        mock_cm.__enter__ = Mock()
+        mock_cm.__exit__ = Mock()
+        mock_open.return_value = mock_cm
+        expected_var = {}
+        mock_get_variable.return_value = expected_var
+        expected_var_idx = tuple(expected_higher_idxs + [Ellipsis])
+        
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        actual_inst.add_data_to_variable(
+            expected_name, expected_data, higher_dim_idxs=expected_higher_idxs
+        )
+
+        mock_open.assert_called_with()
+        self.assertEqual(expected_var, {expected_var_idx: expected_data})
+
+    @patch('modisconverter.formats.RasterUtil.get_data_indexes_from_window')
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_variable')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_data_to_variable_using_window(
+        self, mock_open, mock_get_variable,
+        mock_get_data_indexes_from_window
+    ):
+        expected_name = 'var'
+        expected_data = np.array([1])
+        expected_higher_idxs = None
+        expected_win = Window(0, 0, 1, 1)
+        mock_cm = Mock()
+        mock_cm.__enter__ = Mock()
+        mock_cm.__exit__ = Mock()
+        mock_open.return_value = mock_cm
+        expected_var = MockVariable()
+        mock_get_variable.return_value = expected_var
+        expected_var_idx = '(slice(0, 1, None), slice(0, 1, None))'
+        expected_data_idxs = [(0, 1), (0, 1)]
+        mock_get_data_indexes_from_window.return_value = expected_data_idxs
+        
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        actual_inst.add_data_to_variable(
+            expected_name, expected_data, higher_dim_idxs=expected_higher_idxs,
+            window=expected_win
+        )
+
+        mock_open.assert_called_with()
+        mock_get_data_indexes_from_window.assert_called_with(
+            expected_win
+        )
+        self.assertEqual(expected_var[expected_var_idx], expected_data)
+
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_data_to_variable_bad_data(self, mock_open):
+        expected_name = 'var'
+        expected_data = 'bad'
+        expected_higher_idxs = None
+        
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        with self.assertRaises(ValueError):
+            actual_inst.add_data_to_variable(
+                expected_name, expected_data, higher_dim_idxs=expected_higher_idxs
+            )
+        mock_open.assert_not_called()
+
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_data_to_variable_bad_window(self, mock_open):
+        expected_name = 'var'
+        expected_data = np.array([1])
+        expected_win = 'bad'
+        expected_higher_idxs = None
+        
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        with self.assertRaises(ValueError):
+            actual_inst.add_data_to_variable(
+                expected_name, expected_data, higher_dim_idxs=expected_higher_idxs,
+                window=expected_win
+            )
+        mock_open.assert_not_called()
+
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_variable')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_attribute_to_variable(self, mock_open, mock_get_variable):
+        expected_varname = 'var'
+        expected_aname, expected_aval = 'key', 'val'
+        expected_var = MockVariable()
+        mock_get_variable.return_value = expected_var
+        
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        actual_inst.add_attribute_to_variable(
+            expected_varname, expected_aname, expected_aval
+        )
+
+        mock_open.assert_called_with()
+        self.assertEqual(getattr(expected_var, expected_aname), expected_aval)
+
+    @patch('modisconverter.formats.netcdf.NetCdf4.get_group')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_attribute_to_group(self, mock_open, mock_get_group):
+        expected_groupname = 'var'
+        expected_aname, expected_aval = 'key', 'val'
+        expected_group = MockVariable()
+        mock_get_group.return_value = expected_group
+        
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        actual_inst.add_attribute_to_group(
+            expected_groupname, expected_aname, expected_aval
+        )
+
+        mock_open.assert_called_with()
+        self.assertEqual(getattr(expected_group, expected_aname), expected_aval)
+
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_add_global_attribute(self, mock_open):
+        expected_groupname = 'var'
+        expected_aname, expected_aval = 'key', 'val'
+        mock_cm = Mock()
+        expected_ds = MockVariable()
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        mock_cm.__exit__ = Mock()
+        mock_open.return_value = mock_cm
+        
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+        actual_inst.add_global_attribute(
+            expected_aname, expected_aval
+        )
+
+        mock_open.assert_called_with()
+        self.assertEqual(getattr(expected_ds, expected_aname), expected_aval)
+
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_create_from_data_file_bad_scheme(self, mock_open):
+        expected_datafile = Mock(spec=FileFormat)
+        expected_scheme = 'bad'
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+
+        with self.assertRaises(ValueError) as e_ctx:
+            actual_inst.create_from_data_file(
+                expected_datafile, expected_scheme
+            )
+        self.assertTrue('file format and/or scheme is not supported for conversion' in str(e_ctx.exception))
+        mock_open.assert_not_called()
+
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_create_from_data_file_bad_data_file(self, mock_open):
+        expected_datafile = 'bad'
+        expected_scheme = 'MODIS_HDF4_to_NetCDF4'
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+
+        with self.assertRaises(ValueError) as e_ctx:
+            actual_inst.create_from_data_file(
+                expected_datafile, expected_scheme
+            )
+        self.assertTrue('data_file is not of a subclass of' in str(e_ctx.exception))
+        mock_open.assert_not_called()
+
+    @patch('modisconverter.geo.temporal.Modis.get_netcdf_time_attributes')
+    @patch('modisconverter.geo.temporal.Modis.get_days_since_inception')
+    @patch('modisconverter.geo.temporal.Modis.extract_modis_datetime')
+    @patch('modisconverter.formats.netcdf.NetCdf4.add_data_to_variable')
+    @patch('modisconverter.formats.netcdf.NetCdf4.add_attribute_to_variable')
+    @patch('modisconverter.formats.netcdf.NetCdf4.add_dimension')
+    @patch('modisconverter.formats.netcdf.NetCdf4.add_variable')
+    @patch('modisconverter.formats.netcdf.NetCdf4._open')
+    def test_create_from_data_file(
+        self, mock_open, mock_add_variable, mock_add_dimension, mock_add_attribute_to_variable, mock_add_data_to_variable, mock_extract_modis_datetime,
+        mock_get_days_since_inception, mock_get_netcdf_time_attributes
+    ):
+        expected_datafile = Mock(spec=FileFormat)
+        expected_filename = 'file.hdf'
+        expected_datafile.file_name = expected_filename
+        expected_datafile.format = FORMAT_HDF4
+        expected_df_metadata = {
+            'ArchiveMetadata.0': 'val'
+        }
+        expected_datafile.get_attributes = Mock(return_value=expected_df_metadata)
+        expected_geotrans = 'gt'
+        expected_datafile.get_geotransform = Mock(return_value=expected_geotrans)
+        expected_sds_1 = Mock()
+        expected_sds_1_ds = Mock()
+        expected_sds_1_ds.width, expected_sds_1_ds.height = 1, 1
+        expected_src_info = {
+            'dtype': 'int16', 'fill_value': 1, 'attributes': {}
+        }
+        expected_sds_1.get_src_info = Mock(return_value=expected_src_info)
+
+        expected_sds_1_ds.xy = Mock(side_effect=[
+            (0, 0), (0, 0)
+        ])
+        expected_sds_1_ds.meta = {
+            'dtype': 'int16', 'nodata': expected_src_info['fill_value']
+        }
+        expected_sds_1_ds.tags = Mock(return_value={
+            'scale_factor_err': '0',
+            'add_offset_err': '0',
+            'valid_range': '0,1',
+            'calibrated_nt': '5',
+            'Legend': 'legend',
+            'Description': 'desc'
+        })
+        expected_sds_1_ds.units = ('unit', )
+        expected_sds_1_ds.scales = (2.0, )
+        expected_sds_1_ds.offsets = (1.0, )
+        expected_sds_1.layer_name = 'lyr'
+        expected_sds_1.data_by_windows = Mock(return_value=[
+            ('win', np.array([1]))
+        ])
+        mock_cm_sds1 = Mock()
+        mock_cm_sds1.__enter__ = Mock(return_value=expected_sds_1_ds)
+        mock_cm_sds1.__exit__ = Mock()
+        expected_sds_1._open = Mock(return_value=mock_cm_sds1)
+        expected_subs = [
+            expected_sds_1
+        ]
+        expected_datafile.subdatasets = expected_subs
+
+        expected_time_dt = 'dt'
+        expected_time_days = 1
+        expected_time_attrs = {}
+        mock_extract_modis_datetime.return_value = expected_time_dt
+        mock_get_days_since_inception.return_value = expected_time_days
+        mock_get_netcdf_time_attributes.return_value = expected_time_attrs
+
+        expected_scheme = 'MODIS_HDF4_to_NetCDF4'
+        mock_cm = Mock()
+        expected_ds = MockVariable()
+        mock_cm.__enter__ = Mock(return_value=expected_ds)
+        mock_cm.__exit__ = Mock()
+        expected_datafile._open = Mock(return_value=mock_cm)
+        expected_tags = {
+            'identifier_product_doi_authority': 'a',
+            'identifier_product_doi': 'd'
+        }
+        expected_ds.tags = Mock(return_value=expected_tags)
+
+        actual_inst = self.test_init(return_instance=True)
+        actual_inst._mode = netcdf.MODE_WRITE
+
+        actual_inst.create_from_data_file(
+            expected_datafile, expected_scheme
+        )
+        
+        mock_open.call_args_list[0].assert_called_with(mode='a')
+        expected_datafile._open.assert_called_with()
+        print(mock_add_variable.call_args_list)
+        mock_add_variable.call_args_list[0].assert_called_with(
+            netcdf.DEFAULT_CRS_VAR, netcdf.DEFAULT_CRS_VAR_DTYPE
+        )
+        mock_add_variable.call_args_list[1].assert_called_with(
+            netcdf.DEFAULT_TIME_DIMENSION, netcdf.DEFAULT_TEMPORAL_DIMENSION_DTYPE,
+            options={
+                **{'dimensions': (netcdf.DEFAULT_TIME_DIMENSION)}, **netcdf.DEFAULT_NETCDF4_VARIABLE_OPTIONS
+            }
+        )
+        mock_add_variable.call_args_list[2].assert_called_with(
+            netcdf.DEFAULT_YDIM_DIMENSION, netcdf.DEFAULT_SPATIAL_DIMENSION_DTYPE,
+            options={
+                **{'dimensions': (netcdf.DEFAULT_YDIM_DIMENSION)}, **netcdf.DEFAULT_NETCDF4_VARIABLE_OPTIONS
+            }
+        )
+        mock_add_variable.call_args_list[3].assert_called_with(
+            netcdf.DEFAULT_XDIM_DIMENSION, netcdf.DEFAULT_SPATIAL_DIMENSION_DTYPE,
+            options={
+                **{'dimensions': (netcdf.DEFAULT_XDIM_DIMENSION)}, **netcdf.DEFAULT_NETCDF4_VARIABLE_OPTIONS
+            }
+        )
+        mock_add_variable.call_args_list[4].assert_called_with(
+            expected_sds_1.layer_name, np.dtype(expected_src_info['dtype']), set_auto_mask_scale=False,
+            options={
+                **netcdf.DEFAULT_NETCDF4_VARIABLE_OPTIONS
+            }
+        )
+        mock_add_variable.call_args_list[5].assert_called_with(
+            '/global_attributes/ArchiveMetadata.0', dtype=np.dtype('c'), set_auto_mask_scale=False, options={
+                **{'dimensions': 'chars_ArchiveMetadata.0'}, **netcdf.DEFAULT_NETCDF4_VARIABLE_OPTIONS
+            }
+        )
+
+
+class MockVariable(dict):
+    def __init__(self, d=None):
+        if d is None:
+            d = {}
+        self._data = d
+
+    def __setitem__(self, k, v):
+        k = str(k)
+        self._data[k] = v
+
+    def __getitem__(self, k):
+        return self._data[k]
 
 if __name__ == '__main__':
     main()

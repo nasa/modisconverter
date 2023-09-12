@@ -1,10 +1,11 @@
 import numpy as np
 from typing import Callable
 from unittest import TestCase, main
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch, call
 from rasterio.windows import Window
 from modisconverter.formats import netcdf
 from modisconverter.formats import FileFormat, FORMAT_HDF4
+from modisconverter.geo.spatial import ModisSinusoidal
 
 
 class TestNetCdf4(TestCase):
@@ -828,16 +829,20 @@ class TestNetCdf4(TestCase):
         expected_sds_1_ds.meta = {
             'dtype': 'int16', 'nodata': expected_src_info['fill_value']
         }
-        expected_sds_1_ds.tags = Mock(return_value={
+        expected_sds_1_valid_range = (0, 1)
+        expected_sds_1_tags = {
             'scale_factor_err': '0',
             'add_offset_err': '0',
-            'valid_range': '0,1',
+            'valid_range': ','.join([str(i) for i in expected_sds_1_valid_range]),
             'calibrated_nt': '5',
             'Legend': 'legend',
             'Description': 'desc'
-        })
+        }
+        expected_sds_1_ds.tags = Mock(return_value=expected_sds_1_tags)
         expected_sds_1_ds.units = ('unit', )
-        expected_sds_1_ds.scales = (2.0, )
+        expected_sf = 2.0
+        expected_corrected_sf = 1 / expected_sf
+        expected_sds_1_ds.scales = (expected_sf, )
         expected_sds_1_ds.offsets = (1.0, )
         expected_sds_1.layer_name = 'lyr'
         expected_sds_1.data_by_windows = Mock(return_value=[
@@ -851,14 +856,12 @@ class TestNetCdf4(TestCase):
             expected_sds_1
         ]
         expected_datafile.subdatasets = expected_subs
-
         expected_time_dt = 'dt'
         expected_time_days = 1
         expected_time_attrs = {}
         mock_extract_modis_datetime.return_value = expected_time_dt
         mock_get_days_since_inception.return_value = expected_time_days
         mock_get_netcdf_time_attributes.return_value = expected_time_attrs
-
         expected_scheme = 'MODIS_HDF4_to_NetCDF4'
         mock_cm = Mock()
         expected_ds = MockVariable()
@@ -873,14 +876,12 @@ class TestNetCdf4(TestCase):
 
         actual_inst = self.test_init(return_instance=True)
         actual_inst._mode = netcdf.MODE_WRITE
-
         actual_inst.create_from_data_file(
             expected_datafile, expected_scheme
         )
         
         mock_open.call_args_list[0].assert_called_with(mode='a')
         expected_datafile._open.assert_called_with()
-        print(mock_add_variable.call_args_list)
         mock_add_variable.call_args_list[0].assert_called_with(
             netcdf.DEFAULT_CRS_VAR, netcdf.DEFAULT_CRS_VAR_DTYPE
         )
@@ -913,6 +914,40 @@ class TestNetCdf4(TestCase):
                 **{'dimensions': 'chars_ArchiveMetadata.0'}, **netcdf.DEFAULT_NETCDF4_VARIABLE_OPTIONS
             }
         )
+        add_attr_to_var_calls = mock_add_attribute_to_variable.call_args_list
+        modis_proj = ModisSinusoidal()
+        expected_nc_attrs = modis_proj.get_netcdf_attrs()
+        expected_crs_calls = [
+            call(netcdf.DEFAULT_CRS_VAR, k, v)
+            for k, v in expected_nc_attrs.items()
+        ]
+        expected_attr_calls = [
+            call(netcdf.DEFAULT_CRS_VAR, 'GeoTransform', expected_geotrans),
+            call(netcdf.DEFAULT_YDIM_DIMENSION, '_CoordinateAxisType', 'GeoY'),
+            call(netcdf.DEFAULT_YDIM_DIMENSION, 'axis', 'Y'),
+            call(netcdf.DEFAULT_YDIM_DIMENSION, 'units', 'm'),
+            call(netcdf.DEFAULT_YDIM_DIMENSION, 'standard_name', 'projection_y_coordinate'),
+            call(netcdf.DEFAULT_XDIM_DIMENSION, '_CoordinateAxisType', 'GeoX'),
+            call(netcdf.DEFAULT_XDIM_DIMENSION, 'axis', 'X'),
+            call(netcdf.DEFAULT_XDIM_DIMENSION, 'units', 'm'),
+            call(netcdf.DEFAULT_XDIM_DIMENSION, 'standard_name', 'projection_x_coordinate'),
+            call(expected_sds_1.layer_name, 'long_name', expected_sds_1.layer_name),
+            call(expected_sds_1.layer_name, 'grid_mapping', netcdf.DEFAULT_CRS_VAR),
+            call(expected_sds_1.layer_name, 'coordinates', 'time ydim xdim'),
+            call(expected_sds_1.layer_name, 'units', expected_sds_1_ds.units[0]),
+            call(expected_sds_1.layer_name, 'scale_factor', expected_corrected_sf),
+            call(expected_sds_1.layer_name, 'scale_factor_err', float(expected_sds_1_tags['scale_factor_err'])),
+            call(expected_sds_1.layer_name, 'add_offset', expected_sds_1_ds.offsets[0]),
+            call(expected_sds_1.layer_name, 'add_offset_err', float(expected_sds_1_tags['add_offset_err'])),
+            call(expected_sds_1.layer_name, 'valid_min', np.array(expected_sds_1_valid_range[0])),
+            call(expected_sds_1.layer_name, 'valid_max', np.array(expected_sds_1_valid_range[1])),
+            call(expected_sds_1.layer_name, 'calibrated_nt', np.array(int(expected_sds_1_tags['calibrated_nt']))),
+            call(expected_sds_1.layer_name, 'Legend', expected_sds_1_tags['Legend']),
+            call(expected_sds_1.layer_name, 'Description', expected_sds_1_tags['Description'])
+        ]
+        expected_attr_calls += expected_crs_calls
+        for c in expected_attr_calls:
+            self.assertIn(c, add_attr_to_var_calls)
 
 
 class MockVariable(dict):

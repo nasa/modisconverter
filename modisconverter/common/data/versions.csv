@@ -1,4 +1,5 @@
 Version,CreatedDate,Current,Notes
-0.1.1,2023-08-29,True,"pre-alpha release - fixes issue #3"
+0.2.0,2023-09-12,True,"pre-alpha release - fixes issue #5"
+0.1.1,2023-08-29,False,"pre-alpha release - fixes issue #3"
 0.1.0,2023-08-29,False,"pre-alpha release"
 0.0.0,2023-08-28,False,"pre-release development"

@@ -455,6 +455,10 @@ class NetCdf4(FileFormat):
                             if sds_ds.scales:
                                 scale_factor = sds_ds.scales[0]
                                 if scale_factor != 1:
+                                    if scale_factor.is_integer() and scale_factor > 1:
+                                        sf_dbg = f'scale_factor for variable {var_name}, {scale_factor}, is a positive int greater than one; corrected value to'
+                                        scale_factor = 1 / scale_factor
+                                        LOGGER.debug(f'{sf_dbg} {scale_factor}')
                                     attrs['scale_factor'] = scale_factor
                                     if 'scale_factor_err' in tags:
                                         attrs['scale_factor_err'] = float(tags['scale_factor_err'])
@@ -472,6 +476,8 @@ class NetCdf4(FileFormat):
                                 attrs['calibrated_nt'] = RasterUtil.cast_value_by_dtype(tags['calibrated_nt'], np.dtype('int'))
                             if 'Legend' in tags:
                                 attrs['Legend'] = tags['Legend']
+                            if desc := tags.get('Description', None):
+                                attrs['Description'] = desc
 
                             self.add_variable(
                                 var_name, dtype, set_auto_mask_scale=False,
